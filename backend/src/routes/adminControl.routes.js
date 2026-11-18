@@ -1,0 +1,15 @@
+import { adminDashboardOverview } from '../controllers/adminDashboard.controller.js';
+import { Router } from 'express';
+import { requireAdminSession } from '../middleware/admin-session.middleware.js';
+import { listUsers,updateUser,deleteUser,listAssessmentBank,approveAssessmentItem,listAudit } from '../controllers/adminControl.controller.js';
+const router=Router();
+router.use(requireAdminSession);
+router.use((req,res,next)=>req.user?.role==='ADMIN'?next():res.status(403).json({message:'Administrator access required.'}));
+router.get('/dashboard', adminDashboardOverview);
+router.get('/users',listUsers);
+router.patch('/users/:id',updateUser);
+router.delete('/users/:id',deleteUser);
+router.get('/assessments/bank',listAssessmentBank);
+router.patch('/assessments/:type/:id',approveAssessmentItem);
+router.get('/audit',listAudit);
+export default router;

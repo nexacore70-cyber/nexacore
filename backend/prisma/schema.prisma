@@ -1,0 +1,789 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  STUDENT
+  TUTOR
+  CLIENT
+  TALENT
+  SERVICE_PROVIDER
+  ADMIN
+}
+
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id                    String        @id @default(cuid())
+  fullName              String
+  email                 String        @unique
+  passwordHash          String
+  role                  UserRole?
+  onboardingCompletedAt DateTime?
+  onboardingChoices     Json?
+  status                AccountStatus @default(PENDING)
+  emailVerifiedAt       DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  communityOwnedGroups     CommunityGroup[]         @relation("CommunityOwner")
+  communityMemberships     CommunityMember[]        @relation("CommunityMembership")
+  communityAuthoredPosts   CommunityPost[]          @relation("CommunityAuthoredPost")
+  createdChallenges        Challenge[]              @relation("ChallengeCreator")
+  challengeSubmissions     ChallengeSubmission[]    @relation("ChallengeParticipant")
+  portfolioProfile         PortfolioProfile?
+  portfolioProjects        PortfolioProject[]
+  sentHiringRequests       HiringRequest[]          @relation("HiringClient")
+  receivedHiringRequests   HiringRequest[]          @relation("HiringProvider")
+  programmeOwnedCohorts    ProgrammeCohort[]        @relation("ProgrammeTutor")
+  programmeApplications    ProgrammeApplication[]   @relation("ProgrammeApplicant")
+  outgoingSiteCalls        SiteCall[]               @relation("SiteCallCaller")
+  incomingSiteCalls        SiteCall[]               @relation("SiteCallRecipient")
+  oauthIdentities          OAuthIdentity[]
+  sessions                 Session[]
+  passwordResets           PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+  payments                 Payment[]
+  enrollments              Enrollment[]
+  selectedTutorEnrollments Enrollment[]             @relation("SelectedEnrollmentTutor")
+  ownedCourses             CourseTutor[]
+  allocations              PaymentAllocation[]
+  clientProjects           ProjectContract[]        @relation("ProjectClient")
+  talentProjects           ProjectContract[]        @relation("ProjectTalent")
+  talentWallet             TalentWallet?
+  tutorWallet              TutorWallet?
+  walletTransactions       WalletTransaction[]
+  withdrawals              Withdrawal[]
+  payoutAccount            PayoutAccount?
+
+  upgradeSubscriptions  UpgradeSubscription[]
+  tutorAssessments      TutorAssessment[]
+  tutorSubjectSelection TutorSubjectSelection?
+
+  @@index([role, status])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+model Enrollment {
+  id           String   @id @default(cuid())
+  userId       String
+  courseId     Int
+  tutorId      String?
+  plan         String
+  currency     String   @default("NGN")
+  amountPaid   Int      @default(0)
+  status       String   @default("PENDING")
+  accessActive Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedTutor User?     @relation("SelectedEnrollmentTutor", fields: [tutorId], references: [id], onDelete: Restrict)
+  payments      Payment[]
+
+  @@unique([userId, courseId])
+  @@index([userId, status])
+  @@index([tutorId])
+  @@map("enrollments")
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  userId       String
+  enrollmentId String
+  reference    String        @unique
+  provider     String        @default("PAYSTACK")
+  amountKobo   Int
+  currency     String        @default("NGN")
+  status       PaymentStatus @default(PENDING)
+  verifiedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enrollment  Enrollment          @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  allocations PaymentAllocation[]
+
+  @@index([userId, status])
+  @@index([enrollmentId])
+  @@map("payments")
+}
+
+// Phase 1: immutable accounting records; settlement to bank is NOT enabled.
+model CourseTutor {
+  courseId  Int
+  tutorId   String
+  tutor     User     @relation(fields: [tutorId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+
+  @@id([courseId, tutorId])
+  @@index([tutorId])
+}
+
+model PaymentAllocation {
+  id          String   @id @default(cuid())
+  paymentId   String
+  recipientId String
+  kind        String // PLATFORM_COURSE or TUTOR_COURSE
+  amountKobo  Int
+  createdAt   DateTime @default(now())
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  recipient   User     @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, kind])
+  @@index([recipientId])
+}
+
+model ProjectContract {
+  id                 String              @id @default(cuid())
+  clientId           String
+  talentId           String
+  title              String
+  amountKobo         Int
+  currency           String              @default("NGN")
+  status             String              @default("AWAITING_PAYMENT")
+  paymentReference   String?             @unique
+  paidAt             DateTime?
+  approvedAt         DateTime?
+  createdAt          DateTime            @default(now())
+  client             User                @relation("ProjectClient", fields: [clientId], references: [id], onDelete: Restrict)
+  talent             User                @relation("ProjectTalent", fields: [talentId], references: [id], onDelete: Restrict)
+  walletTransactions WalletTransaction[]
+  hiringRequestId    String?             @unique
+  hiringRequest      HiringRequest?      @relation(fields: [hiringRequestId], references: [id], onDelete: Restrict)
+
+  @@index([clientId, status])
+  @@index([talentId, status])
+}
+
+model TalentWallet {
+  userId        String   @id
+  availableKobo BigInt   @default(0)
+  pendingKobo   BigInt   @default(0)
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+// Settled Tutor course allocations, available for a requested test payout.
+model TutorWallet {
+  userId        String   @id
+  pendingKobo   BigInt   @default(0)
+  availableKobo BigInt   @default(0)
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+model WalletTransaction {
+  id         String           @id @default(cuid())
+  userId     String
+  projectId  String?
+  kind       String
+  amountKobo BigInt
+  reference  String           @unique
+  createdAt  DateTime         @default(now())
+  user       User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  project    ProjectContract? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+}
+
+model Withdrawal {
+  id                String   @id @default(cuid())
+  userId            String
+  amountKobo        BigInt
+  status            String   @default("PENDING")
+  transferReference String?  @unique
+  recipientCode     String?
+  user              User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt         DateTime @default(now())
+}
+
+model PayoutAccount {
+  userId        String   @id
+  bankCode      String
+  accountLast4  String
+  accountName   String
+  recipientCode String
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+model UpgradePlan {
+  id            String                @id
+  name          String
+  priceKobo     Int
+  durationDays  Int
+  active        Boolean               @default(false)
+  subscriptions UpgradeSubscription[]
+}
+
+model UpgradeSubscription {
+  id               String      @id @default(cuid())
+  userId           String
+  planId           String
+  paymentReference String      @unique
+  status           String      @default("PENDING")
+  startsAt         DateTime?
+  endsAt           DateTime?
+  createdAt        DateTime    @default(now())
+  user             User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  plan             UpgradePlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+}
+
+// Add these models to your existing schema.prisma; also add
+// tutorAssessments TutorAssessment[] to model User.
+model TutorQuestion {
+  id           String   @id @default(cuid())
+  subject      String
+  prompt       String
+  choices      Json
+  correctIndex Int
+  approved     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([subject, approved])
+}
+
+model TutorAudioTask {
+  id         String  @id @default(cuid())
+  subject    String
+  audioUrl   String
+  transcript String
+  approved   Boolean @default(false)
+
+  @@index([subject, approved])
+}
+
+model TutorAssessment {
+  id                 String                    @id @default(cuid())
+  userId             String
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject            String
+  status             String                    @default("KNOWLEDGE")
+  knowledgeStartedAt DateTime                  @default(now())
+  audioStartedAt     DateTime?
+  knowledgeScore     Float?
+  audioScore         Float?
+  finalScore         Float?
+  passed             Boolean?
+  createdAt          DateTime                  @default(now())
+  questions          TutorAssessmentQuestion[]
+  audioAnswers       TutorAssessmentAudio[]
+  incidents          TutorAssessmentIncident[]
+
+  @@index([userId, createdAt])
+}
+
+model TutorAssessmentQuestion {
+  id           String          @id @default(cuid())
+  assessmentId String
+  assessment   TutorAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  questionId   String
+  prompt       String
+  choices      Json
+  correctIndex Int
+  answerIndex  Int?
+
+  @@unique([assessmentId, questionId])
+}
+
+model TutorAssessmentAudio {
+  id           String          @id @default(cuid())
+  assessmentId String
+  assessment   TutorAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  taskId       String
+  audioUrl     String
+  transcript   String
+  answer       String?
+  score        Float?
+
+  @@unique([assessmentId, taskId])
+}
+
+model TutorAssessmentIncident {
+  id           String          @id @default(cuid())
+  assessmentId String
+  assessment   TutorAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  kind         String
+  occurredAt   DateTime        @default(now())
+}
+
+// Records all sensitive administrator operations, including rejected deletion requests.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId, createdAt])
+  @@index([targetType, targetId])
+}
+
+model CommunityGroup {
+  id          String            @id @default(cuid())
+  name        String            @db.VarChar(80)
+  description String            @default("") @db.VarChar(500)
+  visibility  String            @default("PUBLIC")
+  ownerId     String
+  owner       User              @relation("CommunityOwner", fields: [ownerId], references: [id])
+  members     CommunityMember[]
+  posts       CommunityPost[]
+  createdAt   DateTime          @default(now())
+
+  @@map("community_groups")
+}
+
+model CommunityMember {
+  id        String         @id @default(cuid())
+  groupId   String
+  userId    String
+  group     CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User           @relation("CommunityMembership", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+  @@map("community_members")
+}
+
+model CommunityPost {
+  id        String         @id @default(cuid())
+  groupId   String
+  authorId  String
+  body      String         @db.VarChar(2000)
+  group     CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author    User           @relation("CommunityAuthoredPost", fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@index([groupId, createdAt])
+  @@map("community_posts")
+}
+
+model Challenge {
+  id          String                @id @default(cuid())
+  title       String                @db.VarChar(120)
+  description String                @db.VarChar(4000)
+  category    String                @db.VarChar(50)
+  status      String                @default("PUBLISHED")
+  deadline    DateTime
+  creatorId   String
+  creator     User                  @relation("ChallengeCreator", fields: [creatorId], references: [id])
+  submissions ChallengeSubmission[]
+  createdAt   DateTime              @default(now())
+
+  @@index([status, deadline])
+  @@map("challenges")
+}
+
+model ChallengeSubmission {
+  id          String    @id @default(cuid())
+  challengeId String
+  userId      String
+  summary     String    @db.VarChar(3000)
+  projectUrl  String?   @db.VarChar(500)
+  status      String    @default("PENDING")
+  score       Int?
+  feedback    String?   @db.VarChar(1000)
+  reviewedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user        User      @relation("ChallengeParticipant", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@index([userId, status])
+  @@map("challenge_submissions")
+}
+
+model PortfolioProfile {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  headline         String   @default("") @db.VarChar(120)
+  bio              String   @default("") @db.VarChar(2000)
+  skills           String[] @default([])
+  availableForHire Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("portfolio_profiles")
+}
+
+model PortfolioProject {
+  id                    String   @id @default(cuid())
+  userId                String
+  title                 String   @db.VarChar(120)
+  description           String   @db.VarChar(2000)
+  projectUrl            String?  @db.VarChar(500)
+  challengeSubmissionId String?  @unique
+  createdAt             DateTime @default(now())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("portfolio_projects")
+}
+
+model HiringRequest {
+  id          String           @id @default(cuid())
+  clientId    String
+  providerId  String
+  title       String           @db.VarChar(120)
+  description String           @db.VarChar(3000)
+  budgetKobo  Int
+  currency    String           @default("NGN")
+  status      String           @default("PENDING")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  client      User             @relation("HiringClient", fields: [clientId], references: [id], onDelete: Restrict)
+  provider    User             @relation("HiringProvider", fields: [providerId], references: [id], onDelete: Restrict)
+  contract    ProjectContract?
+
+  @@index([clientId, status])
+  @@index([providerId, status])
+  @@map("hiring_requests")
+}
+
+// OAuth provider identities must never be linked by email alone.
+model OAuthIdentity {
+  id        String   @id @default(cuid())
+  provider  String
+  subject   String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([provider, subject])
+  @@index([userId])
+}
+
+model OAuthFlow {
+  stateHash String   @id
+  provider  String
+  role      String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model OAuthTicket {
+  ticketHash String   @id
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+}
+
+// Programme enrollment is independent of a user's primary marketplace role.
+enum ProgrammeKind {
+  BOOTCAMP
+  INTERNSHIP
+}
+
+enum ProgrammeState {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+enum ProgrammeApplicationState {
+  APPLIED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model ProgrammeCohort {
+  id           String                 @id @default(cuid())
+  tutorId      String
+  kind         ProgrammeKind
+  title        String
+  description  String
+  startsAt     DateTime?
+  endsAt       DateTime?
+  capacity     Int?
+  state        ProgrammeState         @default(DRAFT)
+  proposedFeeKobo Int?
+  approvedFeeKobo Int?
+  feeApprovalStatus String @default("PENDING")
+  feeApprovedAt DateTime?
+  feeApprovedById String?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  tutor        User                   @relation("ProgrammeTutor", fields: [tutorId], references: [id], onDelete: Restrict)
+  applications ProgrammeApplication[]
+  attendanceSessions ProgrammeAttendanceSession[]
+  assignments ProgrammeAssignment[]
+
+  @@index([kind, state])
+  @@index([tutorId])
+}
+
+model ProgrammeApplication {
+  id          String                    @id @default(cuid())
+  cohortId    String
+  applicantId String
+  motivation  String
+  state       ProgrammeApplicationState @default(APPLIED)
+  appliedAt   DateTime                  @default(now())
+  reviewedAt  DateTime?
+  paidAt      DateTime?
+  payments    ProgrammePayment[]
+  cohort      ProgrammeCohort           @relation(fields: [cohortId], references: [id], onDelete: Restrict)
+  applicant   User                      @relation("ProgrammeApplicant", fields: [applicantId], references: [id], onDelete: Restrict)
+
+  @@unique([cohortId, applicantId])
+  @@index([applicantId, state])
+}
+
+model ClassroomSignal {
+  id          String   @id @default(cuid())
+  cohortId    String
+  senderId    String
+  recipientId String
+  kind        String
+  payload     Json
+  createdAt   DateTime @default(now())
+
+  @@index([cohortId, recipientId, createdAt])
+}
+
+model SiteCall {
+  id          String           @id @default(cuid())
+  callerId    String
+  recipientId String
+  mode        String
+  status      String           @default("RINGING")
+  createdAt   DateTime         @default(now())
+  answeredAt  DateTime?
+  endedAt     DateTime?
+  caller      User             @relation("SiteCallCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  recipient   User             @relation("SiteCallRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  signals     SiteCallSignal[]
+
+  @@index([callerId, createdAt])
+  @@index([recipientId, createdAt])
+}
+
+model SiteCallSignal {
+  id          String   @id @default(cuid())
+  callId      String
+  senderId    String
+  recipientId String
+  kind        String
+  payload     Json
+  createdAt   DateTime @default(now())
+  call        SiteCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId, recipientId, createdAt])
+}
+
+// Phase 15: customer support records (no demo records)
+model SupportTicket {
+  id            String   @id @default(cuid())
+  userId        String
+  subject       String   @db.VarChar(160)
+  category      String   @db.VarChar(40)
+  description   String   @db.Text
+  status        String   @default("OPEN") @db.VarChar(24)
+  adminReply    String?  @db.Text
+  whatsappOptIn Boolean  @default(false)
+  whatsappPhone String?  @db.VarChar(20)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("support_tickets")
+}
+
+// Phase 17: threaded customer support conversation
+model SupportMessage {
+  id         String   @id @default(cuid())
+  ticketId   String
+  authorId   String
+  authorRole String   @db.VarChar(20)
+  body       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("support_messages")
+}
+
+// Phase 18: persisted in-app notifications and durable external delivery jobs
+model SupportNotification {
+  id          String    @id @default(cuid())
+  recipientId String
+  ticketId    String
+  kind        String    @db.VarChar(40)
+  title       String    @db.VarChar(160)
+  body        String    @db.VarChar(500)
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([recipientId, createdAt])
+  @@map("support_notifications")
+}
+
+model SupportDelivery {
+  id            String    @id @default(cuid())
+  eventKey      String    @unique @db.VarChar(220)
+  channel       String    @db.VarChar(20)
+  destination   String    @db.VarChar(320)
+  subject       String?   @db.VarChar(200)
+  body          String    @db.Text
+  status        String    @default("PENDING") @db.VarChar(20)
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lockedAt      DateTime?
+  sentAt        DateTime?
+  lastError     String?   @db.VarChar(500)
+  createdAt     DateTime  @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@map("support_deliveries")
+}
+
+model TutorSubjectSelection {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  subject     String   @db.VarChar(100)
+  confirmedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([subject])
+  @@map("tutor_subject_selections")
+}
+
+model ProgrammePayment {
+  id String @id @default(cuid())
+  applicationId String
+  reference String @unique
+  amountKobo Int
+  currency String @default("NGN")
+  status PaymentStatus @default(PENDING)
+  verifiedAt DateTime?
+  createdAt DateTime @default(now())
+  application ProgrammeApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  allocations ProgrammePaymentAllocation[]
+  @@index([applicationId, status])
+}
+
+model ProgrammePaymentAllocation {
+  id String @id @default(cuid())
+  paymentId String
+  recipientId String
+  kind String
+  amountKobo Int
+  createdAt DateTime @default(now())
+  payment ProgrammePayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  @@unique([paymentId, kind])
+  @@index([recipientId])
+}
+
+
+model ProgrammeAssignment {
+  id String @id @default(cuid())
+  cohortId String
+  title String
+  instructions String @db.Text
+  createdAt DateTime @default(now())
+  cohort ProgrammeCohort @relation(fields: [cohortId], references: [id], onDelete: Restrict)
+  submissions ProgrammeSubmission[]
+  @@index([cohortId, createdAt])
+}
+model ProgrammeSubmission {
+  id String @id @default(cuid())
+  assignmentId String
+  applicantId String
+  content String @db.Text
+  feedback String? @db.Text
+  score Int?
+  submittedAt DateTime @default(now())
+  reviewedAt DateTime?
+  assignment ProgrammeAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  @@unique([assignmentId, applicantId])
+  @@index([applicantId])
+}
+
+
+model ProgrammeAttendanceSession {
+  id String @id @default(cuid())
+  cohortId String
+  title String @db.VarChar(160)
+  heldAt DateTime
+  createdAt DateTime @default(now())
+  cohort ProgrammeCohort @relation(fields: [cohortId], references: [id], onDelete: Restrict)
+  records ProgrammeAttendanceRecord[]
+  @@index([cohortId, heldAt])
+}
+model ProgrammeAttendanceRecord {
+  id String @id @default(cuid())
+  sessionId String
+  applicantId String
+  present Boolean
+  markedAt DateTime @default(now())
+  session ProgrammeAttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  @@unique([sessionId, applicantId])
+  @@index([applicantId])
+}

@@ -1,0 +1,16 @@
+import { Router } from 'express';
+import { requireAuth } from '../middleware/auth.middleware.js';
+import { banks, savePayoutAccount, myPayoutAccount, requestTalentWithdrawal, myPayoutBalance, myWithdrawals, adminWithdrawals, adminSendTransfer, reconcileTransfer, rejectWithdrawal } from '../controllers/payout.controller.js';
+const router = Router();
+router.use(requireAuth);
+router.get('/banks', banks);
+router.get('/account', myPayoutAccount);
+router.get('/balance', myPayoutBalance);
+router.post('/account', savePayoutAccount);
+router.post('/withdrawals', requestTalentWithdrawal);
+router.get('/withdrawals', myWithdrawals);
+router.get('/admin/withdrawals', adminWithdrawals);
+router.post('/admin/withdrawals/:id/send', adminSendTransfer);
+router.post('/admin/withdrawals/:id/reconcile', reconcileTransfer);
+router.post('/admin/withdrawals/:id/reject', rejectWithdrawal);
+export default router;

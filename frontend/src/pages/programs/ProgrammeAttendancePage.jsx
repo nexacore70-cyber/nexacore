@@ -1,0 +1,15 @@
+import { useEffect, useState } from 'react';
+const API=(import.meta.env.VITE_API_BASE_URL||'http://localhost:4000').replace(/\/$/,'');
+const token=()=>sessionStorage.getItem('nexacore_auth_token')||localStorage.getItem('nexacore_auth_token')||'';
+export default function ProgrammeAttendancePage(){
+ const cohortId=new URLSearchParams(window.location.search).get('cohortId')||'';
+ const [data,setData]=useState(null),[error,setError]=useState(''),[title,setTitle]=useState(''),[heldAt,setHeldAt]=useState(''),[applicantId,setApplicantId]=useState(''),[busy,setBusy]=useState(false);
+ async function request(path,method='GET',body){const r=await fetch(`${API}/api/programme-attendance/${encodeURIComponent(cohortId)}${path}`,{method,headers:{Authorization:`Bearer ${token()}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.message||`Request failed (${r.status})`);return d;}
+ async function load(){if(!cohortId){setError('Missing cohort ID.');return;}try{setData(await request(''));setError('');}catch(e){setError(e.message);}}
+ useEffect(()=>{load();},[cohortId]);
+ async function save(fn){setBusy(true);try{await fn();await load();setError('');}catch(e){setError(e.message);}finally{setBusy(false);}}
+ return <main style={{maxWidth:880,margin:'36px auto',padding:24}}><a href={`/programmes/workspace?cohortId=${encodeURIComponent(cohortId)}`}>← Programme workspace</a><h1>Programme attendance</h1><p>Only actual sessions and verified programme participants are displayed.</p>{error&&<p role="alert">{error}</p>}
+ {data?.manager&&<><form onSubmit={e=>{e.preventDefault();save(()=>request('/sessions','POST',{title,heldAt:new Date(heldAt).toISOString()}));}}><h2>Create attendance session</h2><input required maxLength={160} placeholder="Session title" value={title} onChange={e=>setTitle(e.target.value)}/><input required type="datetime-local" value={heldAt} onChange={e=>setHeldAt(e.target.value)}/><button disabled={busy}>Create session</button></form><p>To mark attendance, enter the ID of a verified programme participant.</p><input placeholder="Participant account ID" value={applicantId} onChange={e=>setApplicantId(e.target.value)}/></>}
+ {data?.sessions?.length===0&&<p>No attendance sessions yet.</p>}{data?.sessions?.map(s=><section key={s.id} style={{padding:16,border:'1px solid #ccc',borderRadius:8,marginTop:14}}><h2>{s.title}</h2><p>{new Date(s.heldAt).toLocaleString()}</p>{s.records?.length? s.records.map(r=><p key={r.applicantId}>{data.manager?r.applicantId:'Your attendance'}: {r.present?'Present':'Absent'}</p>):<p>No attendance recorded.</p>}{data.manager&&<div><button disabled={busy||!applicantId.trim()} onClick={()=>save(()=>request(`/sessions/${encodeURIComponent(s.id)}/attendance/${encodeURIComponent(applicantId.trim())}`,'PUT',{present:true}))}>Mark present</button> <button disabled={busy||!applicantId.trim()} onClick={()=>save(()=>request(`/sessions/${encodeURIComponent(s.id)}/attendance/${encodeURIComponent(applicantId.trim())}`,'PUT',{present:false}))}>Mark absent</button></div>}</section>)}
+ </main>;
+}

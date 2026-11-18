@@ -1,0 +1,10 @@
+import { Router } from "express";
+import { requireAuth } from "../middleware/auth.middleware.js";
+import { getMyEnrollments, listCourseTutors, initializePayment, verifyPayment } from "../controllers/payment.controller.js";
+const router = Router();
+router.use(requireAuth);
+router.get("/enrollments", getMyEnrollments);
+router.get("/courses/:courseId/tutors", listCourseTutors);
+router.post("/initialize", initializePayment);
+router.post("/verify", verifyPayment);
+export default router;

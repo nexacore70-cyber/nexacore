@@ -1,0 +1,13 @@
+import { Router } from 'express';
+import { requireAuth } from '../middleware/auth.middleware.js';
+import { startAssessment,getAssessment,submitKnowledge,submitAudio,logIncident,getTeachingSubject,saveTeachingSubject } from '../controllers/tutorAssessment.controller.js';
+const router=Router();
+router.use(requireAuth);
+router.get('/subject',getTeachingSubject);
+router.post('/subject',saveTeachingSubject);
+router.post('/start',startAssessment);
+router.get('/:id',getAssessment);
+router.post('/:id/knowledge',submitKnowledge);
+router.post('/:id/audio',submitAudio);
+router.post('/:id/incident',logIncident);
+export default router;

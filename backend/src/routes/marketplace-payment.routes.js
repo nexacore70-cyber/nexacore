@@ -1,0 +1,16 @@
+import { Router } from 'express';
+import { requireAuth } from '../middleware/auth.middleware.js';
+import { createProject, listProjects, initializeProject, verifyProject, markDelivered, approveProject, wallet, plans, initializeUpgrade, verifyUpgrade } from '../controllers/marketplace-payment.controller.js';
+const router = Router();
+router.use(requireAuth);
+router.get('/projects', listProjects);
+router.post('/projects', createProject);
+router.post('/projects/:id/checkout', initializeProject);
+router.post('/projects/:id/verify', verifyProject);
+router.post('/projects/:id/deliver', markDelivered);
+router.post('/projects/:id/approve', approveProject);
+router.get('/wallet', wallet);
+router.get('/upgrade-plans', plans);
+router.post('/upgrades/checkout', initializeUpgrade);
+router.post('/upgrades/verify', verifyUpgrade);
+export default router;
